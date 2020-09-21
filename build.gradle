@@ -1,0 +1,462 @@
+buildscript {
+    ext {
+        platformGroup = 'com.test.task'
+        platformVersion = '0.1.0'
+        kotlinVersion = '1.3.61'
+        vavrVersion = '0.10.2'
+        easymockVersion = '4.0.2'
+        apacheCommonsValidatorVersion = '1.4.1'
+        testContainersVersion = '1.11.3'
+        orikaSpringBootVersion = "1.8.0"
+    }
+
+    repositories {
+        mavenCentral()
+        jcenter()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+        maven {
+            url "http://oss.sonatype.org/content/repositories/snapshots"
+        }
+    }
+
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
+    }
+}
+
+plugins {
+    id 'org.springframework.boot' version '2.2.1.RELEASE' apply false
+    id 'io.spring.dependency-management' version '1.0.8.RELEASE'
+    id "org.jetbrains.kotlin.plugin.spring" version "1.3.50"
+    id "org.ajoberstar.grgit" version "3.0.0"
+    id 'com.bmuschko.docker-remote-api' version "4.2.0"
+    id 'com.palantir.git-version' version '0.11.0'
+}
+
+def environmentPlatformVersion() {
+    switch (grgit.getBranch().current().name) {
+        case "develop":
+            return "$platformVersion-SNAPSHOT"
+        case "release":
+            return "$platformVersion-release-SNAPSHOT"
+        case "master":
+            return platformVersion
+        default:
+            return "$platformVersion-SNAPSHOT"
+    }
+}
+
+allprojects {
+    apply plugin: "java"
+    apply plugin: "idea"
+    apply plugin: "org.jetbrains.kotlin.jvm"
+    apply plugin: "io.spring.dependency-management"
+
+    group = platformGroup
+    version = environmentPlatformVersion()
+    sourceCompatibility = '1.8'
+
+    task makePretty(type: Delete) {
+        delete 'out'
+    }
+
+    compileKotlin {
+        kotlinOptions.jvmTarget = "1.8"
+    }
+
+    compileTestKotlin {
+        kotlinOptions.jvmTarget = "1.8"
+    }
+
+    repositories {
+        mavenCentral()
+        jcenter()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+        maven {
+            url "http://oss.sonatype.org/content/repositories/snapshots"
+        }
+    }
+
+    dependencies {
+        implementation 'org.apache.commons:commons-lang3'
+        implementation "org.jetbrains.kotlin:kotlin-stdlib"
+        implementation "io.vavr:vavr"
+        testImplementation "org.easymock:easymock"
+        testImplementation "junit:junit"
+        testImplementation "org.assertj:assertj-core"
+    }
+
+    dependencyManagement {
+        imports {
+            mavenBom("org.springframework.boot:spring-boot-dependencies:2.2.1.RELEASE") {
+                bomProperty("kotlin.version", kotlinVersion)
+            }
+            mavenBom 'org.springframework.cloud:spring-cloud-dependencies:Greenwich.RELEASE'
+        }
+        dependencies {
+            dependency("org.easymock:easymock:$easymockVersion")
+            dependency("org.easymock:easymock:$easymockVersion")
+            dependency("io.vavr:vavr:$vavrVersion")
+            dependency("commons-validator:commons-validator:$apacheCommonsValidatorVersion")
+            dependency("org.testcontainers:postgresql:$testContainersVersion")
+            dependency("net.rakugakibox.spring.boot:orika-spring-boot-starter:${orikaSpringBootVersion}")
+        }
+    }
+
+}
+
+project(":commons:persistence-domain") {
+
+    dependencies {
+        dependencies {
+            compile 'org.springframework.boot:spring-boot-starter-data-jpa'
+            compile "org.apache.commons:commons-lang3"
+        }
+    }
+}
+
+project(":commons:api-models") {
+
+    dependencies {
+        api "com.fasterxml.jackson.core:jackson-annotations"
+        api 'org.apache.commons:commons-lang3'
+    }
+}
+
+project(":core:domain") {
+
+    dependencies {
+        api project(":commons:persistence-domain")
+    }
+}
+
+project(":core:external-clients:github:github-model") {
+
+    dependencies {
+        api "org.springframework.cloud:spring-cloud-starter-openfeign"
+        api "com.fasterxml.jackson.core:jackson-annotations"
+        api 'org.apache.commons:commons-lang3'
+    }
+}
+
+project(":core:external-clients:github:github-client") {
+
+    dependencies {
+        api project(":core:external-clients:github:github-model")
+        api "com.fasterxml.jackson.core:jackson-annotations"
+        api 'org.apache.commons:commons-lang3'
+    }
+}
+
+project(":core:persistence:persistence-core") {
+
+    dependencies {
+        implementation project(":core:domain")
+    }
+}
+
+project(":core:service:service-core") {
+
+    dependencies {
+        implementation project(":core:domain")
+        testImplementation project(":core:helper:test-helper")
+        testImplementation "org.springframework.boot:spring-boot-starter-test"
+        testImplementation "org.easymock:easymock"
+    }
+}
+
+project(":core:platform:platform-core") {
+
+    dependencies {
+        implementation project(":core:domain")
+        implementation project(":core:external-clients:github:github-model")
+    }
+}
+
+project(":core:platform:platform-impl") {
+
+    dependencies {
+        implementation project(":core:domain")
+        implementation project(":core:platform:platform-core")
+        implementation project(":core:service:service-core")
+        implementation project(":core:external-clients:github:github-client")
+        implementation project(":core:external-clients:github:github-model")
+        implementation 'io.github.resilience4j:resilience4j-all:1.5.0'
+        testImplementation project(":core:helper:test-helper")
+        testImplementation project(":core:helper:rest-test-helper")
+        testImplementation "org.springframework.boot:spring-boot-starter-test"
+        testImplementation "org.easymock:easymock"
+    }
+}
+
+project(":core:service:service-impl") {
+
+    apply plugin: "kotlin-spring"
+
+    dependencies {
+        implementation project(":core:domain")
+        implementation project(":core:persistence:persistence-core")
+        implementation project(":core:service:service-core")
+        testImplementation project(":core:helper:test-helper")
+        testImplementation "org.springframework.boot:spring-boot-starter-test"
+        testImplementation "org.easymock:easymock"
+    }
+}
+
+project(":core:service:service-integration-test") {
+
+    apply plugin: "kotlin-spring"
+
+    dependencies {
+        testImplementation project(":core:helper:test-helper")
+        testImplementation project(":core:domain")
+        testImplementation project(":core:service:service-core")
+        implementation project(":core:migration:migration-library")
+        runtimeOnly project(":core:service:service-impl")
+        testImplementation "org.springframework.boot:spring-boot-starter-test"
+        testImplementation "org.springframework.security:spring-security-crypto"
+        testImplementation "org.testcontainers:postgresql"
+        testImplementation "org.postgresql:postgresql"
+    }
+}
+
+project(":core:migration:migration-library") {
+
+    dependencies {
+        implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+        implementation 'org.flywaydb:flyway-core'
+        runtimeOnly 'org.postgresql:postgresql'
+    }
+
+}
+
+project(":core:migration:migration-executable") {
+
+    group = "${platformGroup}.migration"
+
+    apply plugin: "org.springframework.boot"
+
+    bootJar {
+        mainClassName = "${group}.migration.boot.MigrationBootApplication"
+        manifest {
+            attributes(
+                    "Implementation-Version": environmentPlatformVersion()
+            )
+        }
+    }
+
+    dependencies {
+        implementation project(":core:migration:migration-library")
+        implementation "org.springframework.boot:spring-boot-starter"
+    }
+}
+
+project(":core:api:rest:rest-model") {
+
+    dependencies {
+        api "com.fasterxml.jackson.core:jackson-annotations"
+        api project(":commons:api-models")
+        implementation "commons-validator:commons-validator"
+    }
+}
+
+
+project(":core:helper:test-helper") {
+
+    dependencies {
+        implementation project(":core:domain")
+        implementation project(":core:service:service-core")
+        implementation "org.assertj:assertj-core"
+        implementation 'org.springframework:spring-context'
+    }
+}
+
+project(":core:helper:rest-test-helper") {
+
+    apply plugin: "kotlin-spring"
+
+    dependencies {
+        implementation project(":core:api:rest:rest-model")
+        implementation project(":core:external-clients:github:github-model")
+        implementation 'org.springframework.boot:spring-boot-starter-web'
+        implementation 'org.springframework:spring-context'
+        implementation 'org.jetbrains.kotlin:kotlin-stdlib'
+        api "org.assertj:assertj-core"
+    }
+}
+
+
+project(":core:api:rest:rest-client") {
+
+    dependencies {
+        compile project(":core:api:rest:rest-model")
+        compile "org.springframework.cloud:spring-cloud-starter-openfeign"
+    }
+}
+
+project(":core:api:rest:rest-facade") {
+
+    dependencies {
+        implementation project(":core:external-clients:github:github-client")
+        implementation project(":core:api:rest:rest-model")
+        implementation project(":core:service:service-core")
+        implementation project(":core:service:service-impl")
+        implementation project(":core:platform:platform-impl")
+        implementation project(":core:platform:platform-core")
+        implementation project(":core:domain")
+        implementation "net.rakugakibox.spring.boot:orika-spring-boot-starter"
+        implementation "org.springframework:spring-context"
+        testImplementation project(":core:helper:test-helper")
+        testImplementation project(":core:helper:rest-test-helper")
+        testImplementation "org.easymock:easymock"
+    }
+}
+
+project(":core:api:rest:rest-resource") {
+
+    dependencies {
+        api project(":core:external-clients:github:github-model")
+        api project(":core:api:rest:rest-facade")
+        api project(":core:api:rest:rest-model")
+        api "org.springframework.boot:spring-boot-starter-web"
+        api "org.aspectj:aspectjrt"
+        api "org.aspectj:aspectjweaver"
+    }
+}
+
+project(":core:api:rest:rest-resource-executable") {
+
+    apply plugin: "org.springframework.boot"
+
+    bootJar {
+        mainClassName = "${platformGroup}.rest.resource.boot.TestTaskSpringBootApplication"
+        manifest {
+            attributes(
+                    "Implementation-Version": environmentPlatformVersion()
+            )
+        }
+    }
+
+    dependencies {
+        implementation project(":core:api:rest:rest-resource")
+        runtimeOnly project(":core:platform:platform-impl")
+        runtimeOnly project(":core:service:service-impl")
+        implementation project(":core:migration:migration-library")
+        implementation 'org.springframework.data:spring-data-jpa'
+        implementation "org.springframework.cloud:spring-cloud-starter-openfeign"
+        implementation 'com.fasterxml.jackson.module:jackson-module-kotlin'
+        implementation 'com.fasterxml.jackson.module:jackson-module-parameter-names'
+        implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jdk8'
+        implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+        implementation "org.postgresql:postgresql"
+        implementation "com.fasterxml.jackson.jaxrs:jackson-jaxrs-json-provider"
+    }
+}
+
+project(":gateway") {
+
+    apply plugin: "org.springframework.boot"
+
+    bootJar {
+        mainClassName = "${platformGroup}.gateway.GatewaySpringBootApplication"
+        manifest {
+            attributes(
+                    "Implementation-Version": environmentPlatformVersion()
+            )
+        }
+    }
+    dependencies {
+        implementation project(":core:api:rest:rest-client")
+        implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+        implementation 'org.springframework.boot:spring-boot-starter-hateoas'
+        implementation 'org.springframework.boot:spring-boot-starter-tomcat'
+    }
+
+}
+
+
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+import com.bmuschko.gradle.docker.tasks.image.DockerPushImage
+import com.bmuschko.gradle.docker.tasks.image.DockerRemoveImage
+import com.bmuschko.gradle.docker.tasks.image.Dockerfile
+
+configure(subprojects.findAll {
+    it.name == "rest-resource-executable" || it.name == "migration-executable" || it.name == "gateway"
+}) {
+
+    apply plugin: 'com.bmuschko.docker-remote-api'
+
+    def registry = project.findProperty("dockerRegistry") ?: ""
+    if (registry) {
+        registry += "/"
+    }
+    docker {
+        registryCredentials {
+            url = "https://$registry"
+            username = System.getenv("DOCKER_REGISTRY_USERNAME")
+            password = System.getenv("DOCKER_REGISTRY_PASSWORD")
+        }
+    }
+
+    task createDockerfile(type: Dockerfile) {
+        destFile = project.layout.buildDirectory.file('docker/Dockerfile')
+        from 'openjdk:8-jre'
+        label(
+                [
+                        'maintainer': 'armangevorg.post@gmail.com',
+                ]
+        )
+        copyFile("${jar.archiveName}", "/")
+        exposePort(8080)
+        entryPoint("java", "-jar", "/${jar.archiveName}")
+    }
+
+    task buildDockerImage(type: DockerBuildImage) {
+        dependsOn createDockerfile
+        dependsOn build
+        inputDir = createDockerfile.destFile.get().asFile.parentFile
+        doFirst {
+            copy {
+                from jar
+                into inputDir
+            }
+        }
+        def repo = [
+                "rest-resource-executable": "core",
+                "migration-executable"    : "migration",
+                "gateway"                 : "gateway"
+        ][project.name]
+        tags.add("$registry$repo:$project.version")
+        def v = versionDetails()
+        if (v.gitHash) {
+            tags.add("$registry$repo:${v.gitHash}")
+        }
+        if (v.branchName) {
+            tags.add("$registry$repo:${v.branchName.replaceAll("/", "-")}")
+        }
+    }
+
+    task removeDockerImage(type: DockerRemoveImage) {
+        force = true
+        targetImageId buildDockerImage.getImageId()
+    }
+
+    buildDockerImage.tags.get().each { tag ->
+        tasks.create(name: "pushDockerTag_${tag.replaceAll('[/\\\\:<>"\\?\\*\\|]', "-")}", type: DockerPushImage) {
+            dependsOn buildDockerImage
+            imageName = tag
+        }
+    }
+
+    task pushDockerTags {
+        dependsOn tasks.withType(DockerPushImage)
+    }
+
+    if (project.hasProperty("removeImage")) {
+        pushDockerTags.finalizedBy removeDockerImage
+    }
+}
